@@ -13,6 +13,16 @@ logger = logging.getLogger(__name__)
 '''Functions for generating statistical views on multi read and unique hash tables'''
 
 
+def get_reads(pysam_iter):
+
+    qnames = []
+    reads = initialize_iterator(pysam_iter)
+    for r in reads:
+        if not r.is_unmapped:
+            qnames.append(r.query_name)
+    return Counter(qnames).keys()
+
+
 def gene_tagged_multi_maps(multi_read_table):
 
     reads = len(multi_read_table)

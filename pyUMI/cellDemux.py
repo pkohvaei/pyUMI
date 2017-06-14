@@ -30,7 +30,6 @@ def get_args():
     return args
 
 
-
 if __name__ == "__main__":
 
     logging.basicConfig(level=logging.INFO)
@@ -76,10 +75,12 @@ if __name__ == "__main__":
     '''
 
     s_time2 = time.time()
+    cb_counter = 1
     for cell_barcode in cell_barcodes:
+        logger.info('Extracting sample no. %d with cell barcode %s :' %(cb_counter, cell_barcode))
         alignment_file.reset()
         aligned_segments = alignment_file.fetch(until_eof=True)
-        sample_file_name = 'sample_' + cell_barcode + ".bam"
+        sample_file_name = output_dir + 'sample_' + cell_barcode + ".bam"
         demux_reads = pysam.AlignmentFile(sample_file_name, 'wb', template=alignment_file)
         for aligned_segment in aligned_segments:
             xc_tag = aligned_segment.get_tag("XC")
@@ -87,6 +88,7 @@ if __name__ == "__main__":
                 demux_reads.write(aligned_segment)
         demux_reads.close()
         pysam.index(sample_file_name)
+        cb_counter += 1
 
     e_time2 = time.time()
     alignment_file.close()

@@ -9,7 +9,7 @@ import multiprocessing as mp
 import pysam
 
 
-from util import prepare_file_name, initialize_iterator
+from util import prepare_file_name, initialize_iterator, pickle_it
 
 
 samples = ['GACCGC', 'AAAACT', 'GGCGTC', 'AAAGTT', 'GTTCGA', 'ATATAG',
@@ -25,6 +25,32 @@ logger = logging.getLogger(__name__)
 
 
 ''' Functions for extracting umi information form the bam file '''
+
+
+def tag_reads(pysam_iter):
+    all_r = []
+    for r in pysam_iter:
+        if not r.is_unmapped:
+            all_r.append(r.query_name + '_' + r.get_tag('XM'))
+    return all_r
+
+
+def isolated_umis(pysam_iter):
+
+    reads = initialize_iterator(pysam_iter)
+    x = Counter(tag_reads(reads)).keys()
+    groups = {}
+
+    for item in x:
+        qname, xm = item.split('_')
+        if xm in groups:
+            groups[xm] += 1
+        else:
+            groups.update({xm: 1})
+
+    isolated = [key for key, value in groups.iteritems() if value == 1]
+
+    return isolated
 
 
 def get_umi_list(pysam_iterator, include='mapped'):
@@ -114,12 +140,6 @@ def build_umi_dist_tables(pysam_iterator, unique_umi_index=None, multi_umi_index
                 update_counter(cnt_m_dt, xm, qname)
 
     return u_dt, m_dt, cnt_m_dt
-
-
-def pickle_it(obj, file_name):
-
-    # TODO : try and exception handling
-    pickle.dump(obj, open(file_name, 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def summarize_dist_chapter((chapter_name, dist_chapter)):

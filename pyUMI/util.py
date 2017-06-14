@@ -6,6 +6,7 @@ import numpy as np
 import time
 import pysam
 from subprocess import check_output
+import cPickle as pickle
 
 
 logger = logging.getLogger(__name__)
@@ -24,6 +25,12 @@ def initialize_iterator(pysam_iterator):
 
 def prepare_file_name(sample, path='', prefix='', extn='.bam'):
     return path + prefix + sample + extn
+
+
+def pickle_it(obj, out_file):
+
+    # TODO : try and exception handling
+    pickle.dump(obj, open(out_file, 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def pcr_duplicates(in_file):
