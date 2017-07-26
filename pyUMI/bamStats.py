@@ -4,12 +4,23 @@ import logging
 import matplotlib.pyplot as plt
 from collections import Counter
 
+import pysam
+
 logger = logging.getLogger(__name__)
 
 
-def count_reads(alignmentFile):
+def count_alignments(alignmentFile):
+
     alignmentFile.reset()
-    return alignmentFile.count(until_eof=True)
+    reads = alignmentFile.fetch(until_eof=True)
+    cnt = 0
+    for r in reads:
+        if not r.is_unmapped:
+            cnt += 1
+
+    # return alignmentFile.count(until_eof=True)
+
+    return cnt
 
 
 def count_um(alignmentFile):
@@ -32,7 +43,7 @@ def multimap_generator(alignmentFile):
     alignmentFile.reset()
     reads = alignmentFile.fetch(until_eof=True)
     for read in reads:
-        if not(read.is_unmapped) and read.has_tag("NH"):
+        if not read.is_unmapped and read.has_tag("NH"):
             if read.get_tag("NH") > 1:
                 yield read
 
@@ -117,6 +128,7 @@ def flag_stats(alignmentFile, report_info=False, draw_bar=False):
         logger.info("  Present flags: %s" %cf.keys())
 
     if draw_bar:
+        fig = plt.figure(figsize=(7, 15))
         plt.bar(range(len(cf)), cf.values(), .2, color='g', align='center')
         plt.xticks(range(len(cf)), cf.keys());
         plt.yticks(cf.values(), [format(x, ",") for x in cf.values()])

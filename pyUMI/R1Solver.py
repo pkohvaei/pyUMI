@@ -154,28 +154,18 @@ def unique_savers_dist(solved_multimaps, multimaps_hashtable, uniques_hashtable,
         x = [i for (i, j) in sorted_dist]
         y = [j for (i, j) in sorted_dist]
 
-        plot_bar(x, y, 'Distribution of number of single-gene associations in unique reads / multi read', 'Number of supporting votes', 'Read frequency', (10, 4))
+        fig = plt.figure(figsize=(15,10))
+        fig.suptitle('Bar distribution of multi-reads with same umi as a group of unique reads with a single gene annotation', fontsize=17)
+        plt.yticks(range(0,max(y),1000))
+        plt.xlim(0,90)
+        plt.xticks(range(0, 90, 10))
+        ax = plt.subplot(1, 1, 1)
+        #ax.yaxis.grid()
+        ax.set_xlabel('Number of unique reads in the group', fontsize=15, labelpad=25)
+        ax.set_ylabel('Frequency in multi-reads', fontsize=15, labelpad=25)
+        ax.bar(x, y, width=0.7, color='b', align='center')
+        plt.show()
 
-        '''
-        fig = plt.figure(figsize=(10, 7))
-        ax = fig.add_subplot(1, 1, 1)
-
-        x_major_ticks = np.arange(0, len(dist), 10)
-        x_minor_ticks = np.arange(0, len(dist), 2)
-
-        y_major_ticks = np.arange(0, largest + 100, 1000)
-        y_minor_ticks = np.arange(0, largest + 100, 500)
-
-        ax.set_xticks(x_major_ticks)
-        ax.set_xticks(x_minor_ticks, minor=True)
-        ax.set_yticks(y_major_ticks)
-        ax.set_yticks(y_minor_ticks, minor=True)
-
-        fig.suptitle(bar_title)
-        plt.xlabel('Number of supporting votes')
-        plt.ylabel('Read frequency')
-        plt.bar(range(len(dist)), dist.values(), .2, color='b', align='center');
-        '''
     return dist
 
 
