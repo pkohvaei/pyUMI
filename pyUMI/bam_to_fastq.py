@@ -84,6 +84,7 @@ def test_output(in_file_bam, in_file_fq, in_file_umi):
 
 if __name__ == "__main__":
 
+    '''
     os.chdir("/data/parastou/UMI/data/HG/AMLPDXdemux/")
 
     for in_file in glob.glob("*.bam"):
@@ -93,6 +94,10 @@ if __name__ == "__main__":
         fq_file = "%s.fastq" % os.path.splitext(in_file)[0]
 
         print in_file, test_output(in_file, fq_file, umi_file)
+    '''
+    
+    in_file = '/data/parastou/UMI/data/HG/AMLPDXdemux/HGsample_AATGTA.bam'
+    main(in_file)	
 
 
 
