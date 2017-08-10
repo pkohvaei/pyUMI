@@ -13,10 +13,12 @@ logger = logging.getLogger(__name__)
 
 def get_args():
     # TODO : docstring
-    # TODO : args definition and default assignment
 
     parser = argparse.ArgumentParser()
-    parser.add_argument('--species', '-s', type=str, help='Name of UCSC database (e.g. hg38)', default=None)
+    parser.add_argument('--read', '-r', type=str, help='.fastq file containing the reads', required=True)
+    parser.add_argument('--umi', '-u', type=str, help='.fastq file containing UMIs', required=True)
+    parser.add_argument('--bam', '-b', type=str, help='bam/sam file to be tagged', required=True)
+    parser.add_argument('--xtag', '-x', type=str, help='UMI barcode tag', default='XM')
     args = parser.parse_args()
 
     return args
@@ -62,7 +64,7 @@ def umi_to_name_map(fq_file, umi_file):
     return un_dict
 
 
-def xm_tag_reads(bam_file, fq_file, umi_file):
+def xm_tag_reads(bam_file, fq_file, umi_file, tag='XM'):
     # TODO : docstring
 
     umi_name_map = umi_to_name_map(fq_file, umi_file)
@@ -79,23 +81,30 @@ def xm_tag_reads(bam_file, fq_file, umi_file):
         if r.has_tag('RG'):
             r.set_tag('RG', None)
         xm = umi_name_map[r.query_name]
-        r.tags += [('XM', xm)]
+        r.tags += [(tag, xm)]
         tagged_reads.write(r)
 
     tagged_reads.close()
-    pysam.sort("-o", out_file, 'tmp.bam')
+    pysam.sort("-o", out_file, 'BumLabelMaker.tmp.bam')
     pysam.index(out_file)
+    os.remove('BumLabelMaker.tmp.bam')
 
 
 if __name__ == '__main__':
 
     logging.basicConfig(level=logging.INFO)
-    logger.info('Call BumiLabelMaker.')
-    # TODO : logger help string
+    logger.info('Call to bam/sam umi-tagger')
+    logger.info('This package tags alignments in bam/sam files with their corresponding UMI.')
+    logger.info('UMI barcode information is added with the tag \'XM\'.')
+    logger.info('Please provide read and umi files (.fastq) along with the input bam/sam file.')
 
     params = vars(get_args())
 
-    # TODO : vars assignments and checking
+    bam_file = params['bam']
+    fq_file = params['read']
+    umi_file = params['umi']
+    xm_tag = params['xtag']
+
     # TODO : test code
 
-    xm_tag_reads()
+    xm_tag_reads(bam_file, fq_file, umi_file, tag=xm_tag)
