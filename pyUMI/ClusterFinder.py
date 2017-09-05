@@ -9,29 +9,60 @@ import pandas as pd
 import logging
 import time
 import cPickle as pickle
+import os
 
 logger = logging.getLogger(__name__)
 
-'''
+
 def get_args():
 
-    parser = argparse.ArgumentParser()
-    parser.add_argument(
-        '--in_file', '-i', type=str, help='Input BAM file name.', required=True)
-    parser.add_argument(
-        '--out_dir', '-o', type=str, default="~",
-        help='Destination for output file(s).')
+    """Function for collecting command-line arguments.
 
+    Returns:
+        args: The return value. 'argparse.Namespace' dictionary.
+
+    .. _PEP 484:
+        https://www.python.org/dev/peps/pep-0484/
+
+    """
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--infile', '-i', type=str, help='bam/sam input file', required=True)
+    parser.add_argument('--window', '-w', type=int, help='Cluster window size (default=1500nct)', default=1500)
+    '''
+    parser.add_argument('--xtag', '-x', type=str, help='UMI barcode tag', default='XM')
+    parser.add_argument('--tmpdir', '-t', type=str, help='Output directory', default='.')
+    '''
     args = parser.parse_args()
 
     return args
-'''
 
 
-def generate_bam_view(pysamIter):
+def generate_bam_view(pysam_iter):
 
-    pysamIter.reset()
-    reads = pysamIter.fetch(until_eof=True)
+    """This function accepts a pysam iterator over a bam file and returns a data frame.
+    The returned data frame contains information of a subset of fields of each bam record.
+
+    Parameters::
+
+        pysam_ite(str):
+            Iterator of type pysam.AlignmentFile.
+
+    Returns:
+        pandas data frame:
+
+        The returned data frame contains the following fields of all bam records
+        with 'NH' tags greater than 0 (mapped):
+
+        'XM' tag content ('XM' column)
+        query_name ('QName' column)
+        reference_name ('Ref' column)
+        reference_start ('Start' column)
+        'NH' tag content ('NH' column)
+    """
+
+    pysam_iter.reset()
+    reads = pysam_iter.fetch(until_eof=True)
 
     records = []
     for r in reads:
@@ -62,7 +93,7 @@ def gaps_of_size(l, length):
 
 def loci_clusters(l, length):
     interval = sorted(l)
-    gaps = gaps_of_size(l, 1500)
+    gaps = gaps_of_size(l, length)
     first = interval[0]
     last = interval[-1]
     gaps.append(first)
@@ -97,7 +128,7 @@ def update_cluster_map(cluster_map, cluster_id, props):
         cluster_map[cluster_id].append(props)
 
 
-def generate_cluster_map(df, length=1500):
+def generate_cluster_map(df, length):
 
     cluster_map = {}
     for i, j in df.groupby(['XM', 'Ref']):
@@ -105,6 +136,7 @@ def generate_cluster_map(df, length=1500):
         if len(j) > 1:
 
             locs = list(j['Start'])
+            nhs = list(j['NH'])
             clusters = loci_clusters(locs, length)
 
             if clusters:
@@ -114,7 +146,7 @@ def generate_cluster_map(df, length=1500):
 
                 for index, item in enumerate(c_map):
                     if item:
-                        props = names[index], locs[index]
+                        props = names[index], locs[index], nhs[index]
                         update_cluster_map(cluster_map, item, props)
 
     return cluster_map
@@ -130,18 +162,48 @@ def generate_umi_group_map(df):
     return umi_group_map
 
 
-def generate_maximal_cluster_map(cluster_map, umi_gorup_map):
+def generate_maximal_cluster_maps(cluster_map, umi_group_map):
 
-    maximal_cluster_map = {}
+    emc_map = {}
+    emc_dup_map = {}
+    mc_map = {}
+    mc_dup_map = {}
+    tmp = {}
+
+    for key, value in cluster_map.items():
+
+        a = key.split(':')[0]
+        # special case to handle repetitive reads in close vicinity
+        s = len(set([i for i, j, k in value]))
+        if (a not in tmp) or (a in tmp and s > tmp[a]):
+            tmp.update({a: s})
+
     for key, value in cluster_map.items():
 
         a = key.split(':')
         xm = a[0]
-        gs = umi_gorup_map[xm]
-        if gs - 1 <= len(value) <= gs:
-            maximal_cluster_map.update({key: value})
+        gs = umi_group_map[xm]
+        s = len(set([i for i, j, k in value]))
+        s_max = len([i for i, j, k in value])
 
-    return maximal_cluster_map
+        if gs == s:
+            if s_max == gs:
+                emc_map.update({key: value})
+            elif s_max > gs:
+                emc_dup_map.update({key: value})
+            else:
+                logger.info('Strange case of exact maximal cluster: check your code!')
+        else:
+            m_size = tmp[xm]
+            if m_size == s:
+                if s_max == m_size:
+                    mc_map.update({key: value})
+                elif s_max > m_size:
+                    mc_dup_map.update({key: value})
+                else:
+                    logger.info('Strange case of maximal cluster: check your code!')
+
+    return emc_map, mc_map, emc_dup_map, mc_dup_map
 
 
 if __name__ == "__main__":
@@ -149,32 +211,62 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     logger.info('Call to Cluster Finder module.')
 
-    #params = vars(get_args())
-    #output_dir = params['out_dir']
-    #in_file = params['in_file']
+    params = vars(get_args())
+    in_file = params['infile']
+    window_size = params['window']
 
-    in_file = '/data/parastou/Star-Lab/test/NStar25.Aligned.out.tagged.bam'
-    st = pysam.AlignmentFile(in_file,"rb")
-    logger.info('Alignment file loaded:')
+    prefix = os.path.splitext(in_file)[0]
+    out_file1 = '%s.emc.pkl' % prefix
+    out_file2 = '%s.mc.pkl' % prefix
+    out_file3 = '%s.emc_dup.pkl' % prefix
+    out_file4 = '%s.mc_dup.pkl' % prefix
+
+    logger.info('Calculates exact maximal and maximal clusters for alignment file:')
     logger.info('%s' % in_file)
+    logger.info('')
+
+    st = pysam.AlignmentFile(in_file,"rb")
 
     stt = time.time()
-
+    logger.info('Extracting alignment information ...')
     df = generate_bam_view(st)
-    cluster_map = generate_cluster_map(df, 1500)
-    logger.info('Cluster map generated')  # ToDo stats
-    umi_group_map = generate_umi_group_map(df)
-    max_cluster_map = generate_maximal_cluster_map(cluster_map, umi_group_map)
+    logger.info('-'*40)
+    logger.info('%s alignments in total.' % format(len(df), ","))
 
+    logger.info('Finding UMI groups ...')
+    umi_group_map = generate_umi_group_map(df)
+    logger.info('-'*40)
+    logger.info('%s UMI groups in total.' % format(len(umi_group_map), ','))
+
+    logger.info('Generating clusters ...')
+    cluster_map = generate_cluster_map(df, window_size)
+    logger.info('-'*40)
+    logger.info('%s clusters in total.' % format(len(cluster_map), ','))
+
+    logger.info('Generating maximal clusters ...')
+    emc_map, mc_map, emc_dup_map, mc_dup_map = generate_maximal_cluster_maps(cluster_map, umi_group_map)
+    logger.info('-'*40)
+    logger.info('%s exact maximal clusters in total.' % format(len(emc_map), ','))
+    logger.info('%s exact maximal clusters with duplicate reads in total.' % format(len(emc_dup_map), ','))
+    logger.info('%s maximal clusters in total.' % format(len(mc_map), ','))
+    logger.info('%s maximal clusters with duplicate in total.' % format(len(mc_dup_map), ','))
+    logger.info('')
     edt = time.time()
     elapsed = edt - stt
 
-    logger.info('Generated maximal clusters in %f seconds.' % elapsed)  # ToDo stats
+    logger.info('Elapsed time: %f seconds.' % elapsed)  # ToDo stats
 
-    out_file = 'MaximalClusters.pkl'
-    pickle.dump(max_cluster_map , open(out_file,'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(emc_map, open(out_file1,'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(mc_map, open(out_file2, 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(emc_dup_map, open(out_file3, 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
+    pickle.dump(mc_dup_map, open(out_file4, 'wb'), protocol=pickle.HIGHEST_PROTOCOL)
 
-    logger.info('Maximal clusters map saved in %s' % out_file)
+    logger.info('Exact maximal cluster map saved in %s' % out_file1)
+    logger.info('Maximal cluster map saved in %s' % out_file2)
+    logger.info('Exact maximal cluster map with duplicates saved in %s' % out_file3)
+    logger.info('Maximal cluster map with duplicates saved in %s' % out_file4)
+    logger.info('Done!')
+    logger.info('')
 
 
 
